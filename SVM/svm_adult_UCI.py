@@ -1,7 +1,7 @@
 from pyspark import SparkConf, SparkContext
 from pyspark.mllib.regression import LabeledPoint
 from pyspark.mllib.linalg import SparseVector, Vectors
-from pyspark.mllib.tree import RandomForest, RandomForestModel
+from pyspark.mllib.classification import SVMWithSGD, SVMModel
 from pyspark.mllib.util import MLUtils
 import numpy as np
 import re
@@ -72,20 +72,15 @@ uni_f = sc.broadcast(fe)    #broadcast uni_feature list
 parsed_data = data_fi.map(binary_vector)
 numFeatures = -1
 if numFeatures <= 0:
-    parsed_data.cache()
     numFeatures = parsed_data.map(lambda x:-1 if x[1].size==0 else x[1][-1]).reduce(max)+1
 labeled_data = parsed_data.map(lambda x: LabeledPoint(x[0], Vectors.sparse(numFeatures, x[1],x[2])))
+labeled_data.cache()
 
 #splite data to trainData and testData
 (trianData, testData) = labeled_data.randomSplit([0.7, 0.3])
 
-#MLUtils.saveAsLibSVMFile(labeled_data, "/data/mllib/labeled_adult.txt")
-for i in trianData.collect():
-    print i, type(i),type(i.label),"two"
-
-model = RandomForest.trainClassifier(trianData, numClasses=2, categoricalFeaturesInfo={},
-                                     numTrees=10, featureSubsetStrategy="auto",
-                                     impurity='gini', maxDepth=4, maxBins=32)
+# Build the model
+model = SVMWithSGD.train(parsedData, iterations=100)
 
 
 # Evaluate model on test instances and compute test error
@@ -93,5 +88,3 @@ predictions = model.predict(testData.map(lambda x: x.features))
 labelsAndPredictions = testData.map(lambda lp: lp.label).zip(predictions)
 testErr = labelsAndPredictions.filter(lambda (v, p): v != p).count() / float(testData.count())
 print('Test Error = ' + str(testErr))
-print('Learned classification forest model:')
-print(model.toDebugString())
